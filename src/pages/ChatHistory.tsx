@@ -37,21 +37,40 @@ export default function ChatHistory() {
   const [sessions, setSessions] = useState<SessionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const loadChatHistory = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setAuthChecked(true);
-        if (!user) {
-          navigate("/login");
-          return;
-        }
+    // Listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthChecked(true);
+    });
 
+    // Initial check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthChecked(true);
+    });
+
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authChecked && !user) {
+      navigate("/login");
+    }
+  }, [authChecked, user, navigate]);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadChatHistory = async () => {
+      setLoading(true);
+      try {
         const chatSessions = await ChatService.getSessions(user.id);
         const sessionsWithMessages: SessionHistory[] = [];
-
         for (const session of chatSessions) {
           const messages = await ChatService.getMessages(session.id);
           sessionsWithMessages.push({
@@ -64,18 +83,15 @@ export default function ChatHistory() {
             }))
           });
         }
-
         setSessions(sessionsWithMessages);
       } catch (error) {
-        console.error("Error loading chat history:", error);
         setSessions([]);
       } finally {
         setLoading(false);
       }
     };
-
     loadChatHistory();
-  }, [navigate]);
+  }, [user]);
 
   if (!authChecked) {
     return (
