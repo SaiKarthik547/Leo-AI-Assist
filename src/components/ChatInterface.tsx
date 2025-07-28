@@ -157,9 +157,7 @@ export const ChatInterface = () => {
       const { data, error } = await supabase.functions.invoke('chat-with-ai', {
         body: { message: currentInput }
       });
-
       if (error) throw error;
-
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         content: data.response,
@@ -168,24 +166,26 @@ export const ChatInterface = () => {
         sessionId: currentSessionId
       };
       setMessages(prev => [...prev, aiResponse]);
-
       // Save AI response to database (non-blocking) - only if user is authenticated
       if (user) {
         ChatService.saveMessage(currentSessionId, user.id, data.response, false).catch(error => {
           console.error("Error saving AI response:", error);
         });
       }
-
-      // Robot voice output
+      // Robot voice output (only for non-code answers)
       if (voiceEnabled && 'speechSynthesis' in window) {
-        setIsSpeaking(true);
-        const utter = new (window as any).SpeechSynthesisUtterance(aiResponse.content);
-        utter.lang = 'en-US';
-        utter.volume = 1;
-        utter.rate = 1;
-        utter.pitch = 1;
-        utter.onend = () => setIsSpeaking(false);
-        (window as any).speechSynthesis.speak(utter);
+        // Heuristic: don't speak if response contains code block (triple backticks) or looks like code
+        const isCode = /```|\b(function|const|let|var|class|def|#include|import|public |private |protected |<\/?[a-z][^>]*>)/i.test(aiResponse.content);
+        if (!isCode) {
+          setIsSpeaking(true);
+          const utter = new (window as any).SpeechSynthesisUtterance(aiResponse.content);
+          utter.lang = 'en-US';
+          utter.volume = 1;
+          utter.rate = 1;
+          utter.pitch = 1;
+          utter.onend = () => setIsSpeaking(false);
+          (window as any).speechSynthesis.speak(utter);
+        }
       }
     } catch (error) {
       console.error('Error getting AI response:', error);
