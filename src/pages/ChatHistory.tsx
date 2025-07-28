@@ -36,12 +36,14 @@ function groupMessagesByDay(messages: Message[]): DailyHistory[] {
 export default function ChatHistory() {
   const [sessions, setSessions] = useState<SessionHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const loadChatHistory = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
+        setAuthChecked(true);
         if (!user) {
           navigate("/login");
           return;
@@ -74,6 +76,14 @@ export default function ChatHistory() {
 
     loadChatHistory();
   }, [navigate]);
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-hero">
+        <div>Checking authentication...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-gradient-hero px-4 py-8 overflow-y-auto h-screen relative">
