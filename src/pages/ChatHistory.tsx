@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageContent } from "@/components/MessageContent";
+import { supabase } from "@/integrations/supabase/client";
+import { ChatService, ChatSession } from "@/services/chatService";
 
 interface Message {
   id: string;
@@ -16,6 +18,11 @@ interface DailyHistory {
   messages: Message[];
 }
 
+interface SessionHistory {
+  session: ChatSession;
+  messages: Message[];
+}
+
 function groupMessagesByDay(messages: Message[]): DailyHistory[] {
   const grouped: { [date: string]: Message[] } = {};
   messages.forEach(msg => {
@@ -27,28 +34,45 @@ function groupMessagesByDay(messages: Message[]): DailyHistory[] {
 }
 
 export default function ChatHistory() {
-  const [history, setHistory] = useState<DailyHistory[]>([]);
+  const [sessions, setSessions] = useState<SessionHistory[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Get current user from localStorage
-    const localUser = localStorage.getItem("currentUser");
-    if (!localUser) {
-      navigate("/login");
-      return;
-    }
-    const user = JSON.parse(localUser);
-    const saved = localStorage.getItem(`chatHistory_${user.username}`);
-    if (saved) {
+    const loadChatHistory = async () => {
       try {
-        const parsed: Message[] = JSON.parse(saved).map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp) }));
-        setHistory(groupMessagesByDay(parsed));
-      } catch {
-        setHistory([]);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          navigate("/login");
+          return;
+        }
+
+        const chatSessions = await ChatService.getSessions(user.id);
+        const sessionsWithMessages: SessionHistory[] = [];
+
+        for (const session of chatSessions) {
+          const messages = await ChatService.getMessages(session.id);
+          sessionsWithMessages.push({
+            session,
+            messages: messages.map(msg => ({
+              id: msg.id,
+              content: msg.content,
+              isUser: msg.is_user,
+              timestamp: new Date(msg.created_at)
+            }))
+          });
+        }
+
+        setSessions(sessionsWithMessages);
+      } catch (error) {
+        console.error("Error loading chat history:", error);
+        setSessions([]);
+      } finally {
+        setLoading(false);
       }
-    } else {
-      setHistory([]);
-    }
+    };
+
+    loadChatHistory();
   }, [navigate]);
 
   return (
@@ -63,25 +87,29 @@ export default function ChatHistory() {
           <CardHeader>
             <CardTitle className="text-center md:text-left">Chat History</CardTitle>
           </CardHeader>
-          <CardContent>
-            {history.length === 0 ? (
-              <div>No chat history found.</div>
-            ) : (
-              history.map(day => (
-                <div key={day.date} className="mb-8">
-                  <h2 className="text-lg font-bold mb-2">{day.date}</h2>
-                  <div className="space-y-2">
-                    {day.messages.map(msg => (
-                      <div key={msg.id} className={`p-3 rounded-lg ${msg.isUser ? "bg-gradient-primary text-primary-foreground" : "bg-card/80 text-card-foreground"}`}>
-                        <span className="block text-xs opacity-70 mb-1">{msg.timestamp.toLocaleTimeString()}</span>
-                        <MessageContent content={msg.content} isUser={msg.isUser} />
-                      </div>
-                    ))}
-                  </div>
+                  <CardContent>
+          {loading ? (
+            <div>Loading chat history...</div>
+          ) : sessions.length === 0 ? (
+            <div>No chat history found.</div>
+          ) : (
+            sessions.map(sessionData => (
+              <div key={sessionData.session.id} className="mb-8">
+                <h2 className="text-lg font-bold mb-2">
+                  {sessionData.session.title} - {new Date(sessionData.session.created_at).toLocaleDateString()}
+                </h2>
+                <div className="space-y-2">
+                  {sessionData.messages.map(msg => (
+                    <div key={msg.id} className={`p-3 rounded-lg ${msg.isUser ? "bg-gradient-primary text-primary-foreground" : "bg-card/80 text-card-foreground"}`}>
+                      <span className="block text-xs opacity-70 mb-1">{msg.timestamp.toLocaleTimeString()}</span>
+                      <MessageContent content={msg.content} isUser={msg.isUser} />
+                    </div>
+                  ))}
                 </div>
-              ))
-            )}
-          </CardContent>
+              </div>
+            ))
+          )}
+        </CardContent>
         </Card>
       </main>
     </div>

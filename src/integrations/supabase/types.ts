@@ -139,6 +139,57 @@ export type Database = {
         }
         Relationships: []
       }
+      settings: {
+        Row: {
+          id: string
+          user_id: string
+          voice_enabled: boolean
+          voice_volume: number
+          mic_sensitivity: number
+          language: string
+          auto_response: boolean
+          notifications: boolean
+          theme: string
+          data_collection: boolean
+          auto_save: boolean
+          response_speed: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          voice_enabled?: boolean
+          voice_volume?: number
+          mic_sensitivity?: number
+          language?: string
+          auto_response?: boolean
+          notifications?: boolean
+          theme?: string
+          data_collection?: boolean
+          auto_save?: boolean
+          response_speed?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          voice_enabled?: boolean
+          voice_volume?: number
+          mic_sensitivity?: number
+          language?: string
+          auto_response?: boolean
+          notifications?: boolean
+          theme?: string
+          data_collection?: boolean
+          auto_save?: boolean
+          response_speed?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       system_status: {
         Row: {
           cpu_usage: number | null

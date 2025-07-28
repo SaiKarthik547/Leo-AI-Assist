@@ -7,6 +7,7 @@ import { MessageContent } from "./MessageContent";
 import { Mic, MicOff, Send, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ChatService } from "@/services/chatService";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 
 interface Message {
@@ -14,11 +15,12 @@ interface Message {
   content: string;
   isUser: boolean;
   timestamp: Date;
+  sessionId?: string;
 }
 
 export const ChatInterface = () => {
   // SpeechRecognition setup
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -40,28 +42,16 @@ export const ChatInterface = () => {
       };
     }
   }, []);
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem("chatHistory");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp) }));
-      } catch {
-        // fallback to default
-      }
-    }
-    return [{
-      id: "1",
-      content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
-      isUser: false,
-      timestamp: new Date()
-    }];
-  });
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -73,54 +63,83 @@ export const ChatInterface = () => {
 
   useEffect(() => {
     scrollToBottom();
-    // Save chat history to localStorage (per user)
-    // Get current user from localStorage
-    const localUser = localStorage.getItem("currentUser");
-    if (localUser) {
-      const u = JSON.parse(localUser);
-      if (u && u.username) {
-        localStorage.setItem(`chatHistory_${u.username}`, JSON.stringify(messages));
-      }
-    }
   }, [messages]);
 
   useEffect(() => {
-    // Get current user for filtering
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+    // Get current user and initialize chat session
+    const initializeChat = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+        
+        if (user) {
+          // Create a new chat session
+          const sessionId = await ChatService.createSession(user.id);
+          setCurrentSessionId(sessionId);
+          
+          // Add welcome message
+          const welcomeMessage: Message = {
+            id: "1",
+            content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
+            isUser: false,
+            timestamp: new Date(),
+            sessionId: sessionId
+          };
+          setMessages([welcomeMessage]);
+          
+          // Save welcome message to database (don't await to avoid blocking UI)
+          ChatService.saveMessage(sessionId, user.id, welcomeMessage.content, false).catch(error => {
+            console.error("Error saving welcome message:", error);
+          });
+        } else {
+          // If no user, still allow chat but with limited functionality
+          const demoSessionId = "demo-" + Date.now();
+          setCurrentSessionId(demoSessionId);
+          
+          const welcomeMessage: Message = {
+            id: "1",
+            content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
+            isUser: false,
+            timestamp: new Date(),
+            sessionId: demoSessionId
+          };
+          setMessages([welcomeMessage]);
+        }
+      } catch (error) {
+        console.error("Error initializing chat:", error);
+        toast.error("Failed to initialize chat session");
+        
+        // Fallback to demo mode
+        const demoSessionId = "demo-" + Date.now();
+        setCurrentSessionId(demoSessionId);
+        
+        const welcomeMessage: Message = {
+          id: "1",
+          content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
+          isUser: false,
+          timestamp: new Date(),
+          sessionId: demoSessionId
+        };
+        setMessages([welcomeMessage]);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    fetchUser();
+    initializeChat();
   }, []);
 
-  useEffect(() => {
-    // Load chat history for this user only
-    if (user) {
-      const saved = localStorage.getItem(`chatHistory_${user.id}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setMessages(parsed.map((msg: any) => ({ ...msg, timestamp: new Date(msg.timestamp) })));
-        } catch {}
-      } else {
-        setMessages([{
-          id: "1",
-          content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
-          isUser: false,
-          timestamp: new Date()
-        }]);
-      }
-    }
-  }, [user]);
-
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !currentSessionId || isSending) {
+      return;
+    }
 
+    setIsSending(true);
     const userMessage: Message = {
       id: Date.now().toString(),
       content: inputValue,
       isUser: true,
-      timestamp: new Date()
+      timestamp: new Date(),
+      sessionId: currentSessionId
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -128,6 +147,13 @@ export const ChatInterface = () => {
     setInputValue("");
 
     try {
+      // Save user message to database (non-blocking) - only if user is authenticated
+      if (user) {
+        ChatService.saveMessage(currentSessionId, user.id, currentInput, true).catch(error => {
+          console.error("Error saving user message:", error);
+        });
+      }
+
       const { data, error } = await supabase.functions.invoke('chat-with-ai', {
         body: { message: currentInput }
       });
@@ -138,20 +164,28 @@ export const ChatInterface = () => {
         id: (Date.now() + 1).toString(),
         content: data.response,
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
+        sessionId: currentSessionId
       };
       setMessages(prev => [...prev, aiResponse]);
+
+      // Save AI response to database (non-blocking) - only if user is authenticated
+      if (user) {
+        ChatService.saveMessage(currentSessionId, user.id, data.response, false).catch(error => {
+          console.error("Error saving AI response:", error);
+        });
+      }
 
       // Robot voice output
       if (voiceEnabled && 'speechSynthesis' in window) {
         setIsSpeaking(true);
-        const utter = new window.SpeechSynthesisUtterance(aiResponse.content);
+        const utter = new (window as any).SpeechSynthesisUtterance(aiResponse.content);
         utter.lang = 'en-US';
         utter.volume = 1;
         utter.rate = 1;
         utter.pitch = 1;
         utter.onend = () => setIsSpeaking(false);
-        window.speechSynthesis.speak(utter);
+        (window as any).speechSynthesis.speak(utter);
       }
     } catch (error) {
       console.error('Error getting AI response:', error);
@@ -159,10 +193,13 @@ export const ChatInterface = () => {
         id: (Date.now() + 1).toString(),
         content: "I'm sorry, I'm having trouble connecting right now. Please try again.",
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
+        sessionId: currentSessionId
       };
       setMessages(prev => [...prev, errorResponse]);
       toast.error("Failed to get AI response");
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -181,6 +218,28 @@ export const ChatInterface = () => {
       toast('Voice listening stopped');
     }
   };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !isSending) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full w-full bg-gradient-hero items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Initializing chat...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full w-full bg-gradient-hero items-center justify-center relative">
@@ -264,18 +323,26 @@ export const ChatInterface = () => {
         <div className="flex space-x-3 items-center">
           <Input
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={handleInputChange}
+            onKeyPress={handleKeyPress}
             placeholder="Ask me anything..."
-            onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
             className="flex-1 bg-input/50 backdrop-blur-sm transition-all duration-300 text-base px-4 py-3"
+            disabled={isSending}
           />
           <Button 
             onClick={handleSendMessage}
+            disabled={isSending || !inputValue.trim()}
             className="bg-gradient-primary transition-all duration-300 px-4 py-3"
           >
-            <Send className="w-5 h-5" />
+            {isSending ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
           </Button>
         </div>
+        
+
       </div>
     </div>
   );

@@ -23,16 +23,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect } from "react";
 export default function Settings() {
   const [settings, setSettings] = useState({
-    voiceEnabled: true,
-    voiceVolume: [75],
-    micSensitivity: [60],
+    voice_enabled: true,
+    voice_volume: 75,
+    mic_sensitivity: 60,
     language: "en-US",
-    autoResponse: true,
+    auto_response: true,
     notifications: true,
     theme: "dark",
-    dataCollection: false,
-    autoSave: true,
-    responseSpeed: "fast"
+    data_collection: false,
+    auto_save: true,
+    response_speed: "fast"
   });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
@@ -102,26 +102,26 @@ export default function Settings() {
                 </div>
                 <Switch
                   id="voice-enabled"
-                  checked={settings.voiceEnabled}
-                  onCheckedChange={(checked) => updateSetting("voiceEnabled", checked)}
+                  checked={settings.voice_enabled}
+                  onCheckedChange={(checked) => updateSetting("voice_enabled", checked)}
                 />
               </div>
               <Separator />
               <div className="space-y-3">
-                <Label>Voice Volume: {settings.voiceVolume[0]}%</Label>
+                <Label>Voice Volume: {settings.voice_volume}%</Label>
                 <Slider
-                  value={settings.voiceVolume}
-                  onValueChange={(value) => updateSetting("voiceVolume", value)}
+                  value={[settings.voice_volume]}
+                  onValueChange={(value) => updateSetting("voice_volume", value[0])}
                   max={100}
                   step={1}
                   className="w-full"
                 />
               </div>
               <div className="space-y-3">
-                <Label>Microphone Sensitivity: {settings.micSensitivity[0]}%</Label>
+                <Label>Microphone Sensitivity: {settings.mic_sensitivity}%</Label>
                 <Slider
-                  value={settings.micSensitivity}
-                  onValueChange={(value) => updateSetting("micSensitivity", value)}
+                  value={[settings.mic_sensitivity]}
+                  onValueChange={(value) => updateSetting("mic_sensitivity", value[0])}
                   max={100}
                   step={1}
                   className="w-full"
@@ -177,8 +177,8 @@ export default function Settings() {
                 </div>
                 <Switch
                   id="data-collection"
-                  checked={settings.dataCollection}
-                  onCheckedChange={(checked) => updateSetting("dataCollection", checked)}
+                  checked={settings.data_collection}
+                  onCheckedChange={(checked) => updateSetting("data_collection", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -190,8 +190,8 @@ export default function Settings() {
                 </div>
                 <Switch
                   id="auto-save"
-                  checked={settings.autoSave}
-                  onCheckedChange={(checked) => updateSetting("autoSave", checked)}
+                  checked={settings.auto_save}
+                  onCheckedChange={(checked) => updateSetting("auto_save", checked)}
                 />
               </div>
             </CardContent>

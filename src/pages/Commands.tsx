@@ -1,5 +1,4 @@
-import { useState } from "react";
-
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +14,8 @@ import {
   Mail
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { CommandService } from "@/services/commandService";
 
 const systemCommands = [
   {
@@ -45,9 +46,23 @@ const systemCommands = [
 
 export default function Commands() {
   const [executingCommand, setExecutingCommand] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    fetchUser();
+  }, []);
 
   // Show shortcut message instead of executing
-  const executeCommand = (command: string, name: string) => {
+  const executeCommand = async (command: string, name: string) => {
+    if (!user) {
+      toast.error("Please log in to execute commands");
+      return;
+    }
+
     setExecutingCommand(command);
     let shortcutMsg = "";
     switch (command) {
@@ -74,10 +89,13 @@ export default function Commands() {
     }
     toast.info(`${name}: ${shortcutMsg}`);
     setExecutingCommand(null);
-    // Log command to localStorage
-    const history = JSON.parse(localStorage.getItem("commandHistory") || "[]");
-    history.push({ command, name, shortcut: shortcutMsg, timestamp: new Date().toISOString() });
-    localStorage.setItem("commandHistory", JSON.stringify(history));
+    
+    // Log command to database
+    try {
+      await CommandService.logCommand(user.id, command, name, shortcutMsg);
+    } catch (error) {
+      console.error("Error logging command:", error);
+    }
   };
 
   return (
