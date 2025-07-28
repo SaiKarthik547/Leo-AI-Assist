@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageContent } from "@/components/MessageContent";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatService, ChatSession } from "@/services/chatService";
+import AuthPage from "./AuthPage";
 
 interface Message {
   id: string;
@@ -34,36 +35,24 @@ function groupMessagesByDay(messages: Message[]): DailyHistory[] {
 }
 
 export default function ChatHistory() {
-  const [sessions, setSessions] = useState<SessionHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setAuthChecked(true);
-    });
-
-    // Initial check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setAuthChecked(true);
-    });
-
-    return () => {
-      listener?.subscription.unsubscribe();
-    };
+    // Try to load user from localStorage (username/password auth)
+    const localUser = localStorage.getItem("currentUser");
+    if (localUser) {
+      setUser(JSON.parse(localUser));
+      setLoading(false);
+      return;
+    }
+    // If not found, show auth page
+    setUser(null);
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (authChecked && !user) {
-      navigate("/login");
-    }
-  }, [authChecked, user, navigate]);
-
+  const [sessions, setSessions] = useState<SessionHistory[]>([]);
+  // Only load chat history if user is present
   useEffect(() => {
     if (!user) return;
     const loadChatHistory = async () => {
@@ -93,12 +82,11 @@ export default function ChatHistory() {
     loadChatHistory();
   }, [user]);
 
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-hero">
-        <div>Checking authentication...</div>
-      </div>
-    );
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+  if (!user) {
+    return <AuthPage />;
   }
 
   return (
