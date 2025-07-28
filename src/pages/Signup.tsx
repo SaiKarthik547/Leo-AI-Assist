@@ -17,9 +17,12 @@ export default function Signup() {
       setError("Username already exists");
       return;
     }
-    users.push({ username, password });
+    const newUser = { username, password };
+    users.push(newUser);
     localStorage.setItem("users", JSON.stringify(users));
-    navigate("/login");
+    // Automatically log in the user after signup
+    localStorage.setItem("currentUser", JSON.stringify(newUser));
+    navigate("/profile");
   };
 
   return (
