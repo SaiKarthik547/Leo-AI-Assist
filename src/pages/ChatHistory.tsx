@@ -37,24 +37,21 @@ function groupMessagesByDay(messages: Message[]): DailyHistory[] {
 export default function ChatHistory() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<SessionHistory[]>([]);
 
+  // Always get user from Supabase Auth
   useEffect(() => {
-    // Try to load user from localStorage (username/password auth)
-    const localUser = localStorage.getItem("currentUser");
-    if (localUser) {
-      setUser(JSON.parse(localUser));
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
       setLoading(false);
-      return;
-    }
-    // If not found, show auth page
-    setUser(null);
-    setLoading(false);
+    };
+    checkUser();
   }, []);
 
-  const [sessions, setSessions] = useState<SessionHistory[]>([]);
-  // Only load chat history if user is present
+  // Only load history if user and user.id are defined
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.id) return;
     const loadChatHistory = async () => {
       setLoading(true);
       try {
