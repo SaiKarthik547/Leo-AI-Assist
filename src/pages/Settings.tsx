@@ -49,7 +49,14 @@ export default function Settings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
-        const { data, error } = await supabase.from("settings").select("*").eq("user_id", user.id).single();
+        let { data, error } = await supabase.from("settings").select("*").eq("user_id", user.id).single();
+        if (!data) {
+          // Insert default settings for this user
+          const { data: inserted, error: insertError } = await supabase.from("settings").insert({ user_id: user.id });
+          if (!insertError) {
+            data = inserted ? (Array.isArray(inserted) ? inserted[0] : inserted) : null;
+          }
+        }
         if (data) setSettings(data);
       }
       setLoading(false);
