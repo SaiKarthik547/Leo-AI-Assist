@@ -51,6 +51,7 @@ export default function Login() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               required
+              autoComplete="username"
             />
             <Input
               type="password"
