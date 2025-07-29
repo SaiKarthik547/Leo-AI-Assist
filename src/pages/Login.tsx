@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -10,15 +11,17 @@ export default function Login() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const user = users.find((u: any) => u.username === username && u.password === password);
-    if (user) {
-      localStorage.setItem("currentUser", JSON.stringify(user));
-      navigate("/profile");
+    setError("");
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: username, // assuming username is email
+      password,
+    });
+    if (error) {
+      setError(error.message);
     } else {
-      setError("Invalid username or password");
+      navigate("/profile");
     }
   };
 
