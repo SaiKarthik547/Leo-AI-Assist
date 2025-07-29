@@ -59,6 +59,7 @@ export default function ChatHistory() {
       setLoading(true);
       try {
         const chatSessions = await ChatService.getSessions(user.id);
+        console.log('Loaded sessions:', chatSessions); // DEBUG LOG
         const sessionsWithMessages: SessionHistory[] = [];
         for (const session of chatSessions) {
           const messages = await ChatService.getMessages(session.id);
