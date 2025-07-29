@@ -14,15 +14,26 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: username, // assuming username is email
+    // 1. Look up email for username
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('username', username)
+      .single();
+    if (error || !data) {
+      setError("Invalid username or password, or account not confirmed.");
+      return;
+    }
+    // 2. Sign in with email and password
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: data.email,
       password,
     });
-    if (error) {
-      setError(error.message);
-    } else {
-      navigate("/profile");
+    if (signInError) {
+      setError("Invalid username or password, or account not confirmed.");
+      return;
     }
+    navigate("/profile");
   };
 
   return (
@@ -45,6 +56,7 @@ export default function Login() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
             {error && <div className="text-red-500 text-sm text-center">{error}</div>}
             <Button type="submit" className="w-full bg-gradient-primary">Sign In</Button>
