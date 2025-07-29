@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export default function Signup() {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -14,15 +15,28 @@ export default function Signup() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    // 1. Sign up with Supabase (store username in user_metadata)
     const { data, error } = await supabase.auth.signUp({
-      email: username, // assuming username is email
+      email,
       password,
+      options: { data: { username } }
     });
     if (error) {
       setError(error.message);
-    } else {
-      navigate("/profile");
+      return;
     }
+    const userId = data.user?.id;
+    if (!userId) {
+      setError("Signup failed: No user id returned.");
+      return;
+    }
+    // 2. Insert into profiles table with id, username, email
+    const { error: profileError } = await supabase.from('profiles').insert({ id: userId, username, email });
+    if (profileError) {
+      setError(profileError.message);
+      return;
+    }
+    navigate("/profile");
   };
 
   return (
@@ -37,6 +51,12 @@ export default function Signup() {
               placeholder="Username"
               value={username}
               onChange={e => setUsername(e.target.value)}
+              required
+            />
+            <Input
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               required
             />
             <Input
