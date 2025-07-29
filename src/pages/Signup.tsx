@@ -10,11 +10,13 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const navigate = useNavigate();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setInfo("");
     // 1. Sign up with Supabase (store username in user_metadata)
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -30,7 +32,12 @@ export default function Signup() {
       setError("Signup failed: No user id returned.");
       return;
     }
-    // 2. Wait for session to be available
+    // 2. If confirmation required, show message and return
+    if (!data.session) {
+      setInfo("Check your email to confirm your account before logging in.");
+      return;
+    }
+    // 3. Wait for session to be available
     let sessionUserId = null;
     for (let i = 0; i < 10; i++) {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -42,7 +49,7 @@ export default function Signup() {
       setError("Session not established after signup.");
       return;
     }
-    // 3. Insert into profiles table with user_id, username, email
+    // 4. Insert into profiles table with user_id, username, email
     const { error: profileError } = await supabase.from('profiles').insert({ user_id: userId, username, email });
     if (profileError) {
       setError(profileError.message);
@@ -80,6 +87,7 @@ export default function Signup() {
               autoComplete="current-password"
             />
             {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+            {info && <div className="text-green-600 text-sm text-center">{info}</div>}
             <Button type="submit" className="w-full bg-gradient-primary">Sign Up</Button>
           </form>
           <div className="mt-4 text-center text-sm">
