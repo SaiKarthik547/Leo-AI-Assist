@@ -66,6 +66,16 @@ export const ChatInterface = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Helper to get or create a session for the user
+  const getOrCreateSession = async (userId) => {
+    const sessions = await ChatService.getSessions(userId);
+    if (sessions && sessions.length > 0) {
+      return sessions[0].id; // Use the latest session
+    }
+    // Otherwise, create a new session
+    return await ChatService.createSession(userId);
+  };
+
   useEffect(() => {
     // Require Supabase user for chat
     const initializeChat = async () => {
@@ -73,11 +83,8 @@ export const ChatInterface = () => {
         const { data: { user } } = await supabase.auth.getUser();
         setUser(user);
         if (user) {
-          // Create a new chat session
-          const sessionId = await ChatService.createSession(user.id);
+          const sessionId = await getOrCreateSession(user.id);
           setCurrentSessionId(sessionId);
-          // Add welcome message only if no messages exist yet
-          // (We'll load messages below)
         } else {
           setUser(null);
         }
