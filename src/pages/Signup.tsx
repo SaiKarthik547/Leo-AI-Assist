@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Signup() {
   const [username, setUsername] = useState("");
@@ -10,19 +11,18 @@ export default function Signup() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    if (users.find((u: any) => u.username === username)) {
-      setError("Username already exists");
-      return;
+    setError("");
+    const { data, error } = await supabase.auth.signUp({
+      email: username, // assuming username is email
+      password,
+    });
+    if (error) {
+      setError(error.message);
+    } else {
+      navigate("/profile");
     }
-    const newUser = { username, password };
-    users.push(newUser);
-    localStorage.setItem("users", JSON.stringify(users));
-    // Automatically log in the user after signup
-    localStorage.setItem("currentUser", JSON.stringify(newUser));
-    navigate("/profile");
   };
 
   return (
