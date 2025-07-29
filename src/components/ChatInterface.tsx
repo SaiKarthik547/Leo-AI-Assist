@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatService } from "@/services/chatService";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+import AuthPage from "@/pages/AuthPage";
 
 interface Message {
   id: string;
@@ -66,19 +67,14 @@ export const ChatInterface = () => {
   }, [messages]);
 
   useEffect(() => {
-    // Get current user and initialize chat session
+    // Require Supabase user for chat
     const initializeChat = async () => {
       try {
-        // Try to get user from localStorage (local login)
-        let localUser = null;
-        const localUserStr = localStorage.getItem("currentUser");
-        if (localUserStr) {
-          localUser = JSON.parse(localUserStr);
-        }
-        setUser(localUser);
-        if (localUser) {
-          // Create a new chat session for this user
-          const sessionId = await ChatService.createSession(localUser.username, "New Chat");
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+        if (user) {
+          // Create a new chat session
+          const sessionId = await ChatService.createSession(user.id);
           setCurrentSessionId(sessionId);
           // Add welcome message
           const welcomeMessage = {
@@ -90,36 +86,16 @@ export const ChatInterface = () => {
           };
           setMessages([welcomeMessage]);
           // Save welcome message to database (don't await to avoid blocking UI)
-          ChatService.saveMessage(sessionId, localUser.username, welcomeMessage.content, false).catch(error => {
+          ChatService.saveMessage(sessionId, user.id, welcomeMessage.content, false).catch(error => {
             console.error("Error saving welcome message:", error);
           });
         } else {
-          // If no user, show demo mode
-          const demoSessionId = "demo-" + Date.now();
-          setCurrentSessionId(demoSessionId);
-          const welcomeMessage = {
-            id: "1",
-            content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
-            isUser: false,
-            timestamp: new Date(),
-            sessionId: demoSessionId
-          };
-          setMessages([welcomeMessage]);
+          setUser(null);
         }
       } catch (error) {
         console.error("Error initializing chat:", error);
         toast.error("Failed to initialize chat session");
-        // Fallback to demo mode
-        const demoSessionId = "demo-" + Date.now();
-        setCurrentSessionId(demoSessionId);
-        const welcomeMessage = {
-          id: "1",
-          content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
-          isUser: false,
-          timestamp: new Date(),
-          sessionId: demoSessionId
-        };
-        setMessages([welcomeMessage]);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
@@ -131,7 +107,6 @@ export const ChatInterface = () => {
     if (!inputValue.trim() || !currentSessionId || isSending) {
       return;
     }
-
     setIsSending(true);
     const userMessage = {
       id: Date.now().toString(),
@@ -140,19 +115,16 @@ export const ChatInterface = () => {
       timestamp: new Date(),
       sessionId: currentSessionId
     };
-
     setMessages(prev => [...prev, userMessage]);
     const currentInput = inputValue;
     setInputValue("");
-
     try {
-      // Save user message to database for local login user
+      // Save user message to Supabase
       if (user) {
-        ChatService.saveMessage(currentSessionId, user.username, currentInput, true).catch(error => {
+        ChatService.saveMessage(currentSessionId, user.id, currentInput, true).catch(error => {
           console.error("Error saving user message:", error);
         });
       }
-
       const { data, error } = await supabase.functions.invoke('chat-with-ai', {
         body: { message: currentInput }
       });
@@ -165,15 +137,14 @@ export const ChatInterface = () => {
         sessionId: currentSessionId
       };
       setMessages(prev => [...prev, aiResponse]);
-      // Save AI response to database for local login user
+      // Save AI response to Supabase
       if (user) {
-        ChatService.saveMessage(currentSessionId, user.username, data.response, false).catch(error => {
+        ChatService.saveMessage(currentSessionId, user.id, data.response, false).catch(error => {
           console.error("Error saving AI response:", error);
         });
       }
       // Robot voice output (only for non-code answers)
       if (voiceEnabled && 'speechSynthesis' in window) {
-        // Heuristic: don't speak if response contains code block (triple backticks) or looks like code
         const isCode = /```|\b(function|const|let|var|class|def|#include|import|public |private |protected |<\/?[a-z][^>]*>)/i.test(aiResponse.content);
         if (!isCode) {
           setIsSpeaking(true);
@@ -238,6 +209,9 @@ export const ChatInterface = () => {
         </div>
       </div>
     );
+  }
+  if (!user) {
+    return <AuthPage />;
   }
 
   return (
