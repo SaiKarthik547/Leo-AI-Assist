@@ -30,8 +30,20 @@ export default function Signup() {
       setError("Signup failed: No user id returned.");
       return;
     }
-    // 2. Insert into profiles table with id, username, email
-    const { error: profileError } = await supabase.from('profiles').insert({ id: userId, username, email });
+    // 2. Wait for session to be available
+    let sessionUserId = null;
+    for (let i = 0; i < 10; i++) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      sessionUserId = sessionData.session?.user?.id;
+      if (sessionUserId === userId) break;
+      await new Promise(res => setTimeout(res, 200));
+    }
+    if (sessionUserId !== userId) {
+      setError("Session not established after signup.");
+      return;
+    }
+    // 3. Insert into profiles table with user_id, username, email
+    const { error: profileError } = await supabase.from('profiles').insert({ user_id: userId, username, email });
     if (profileError) {
       setError(profileError.message);
       return;
@@ -65,6 +77,7 @@ export default function Signup() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
             {error && <div className="text-red-500 text-sm text-center">{error}</div>}
             <Button type="submit" className="w-full bg-gradient-primary">Sign Up</Button>
