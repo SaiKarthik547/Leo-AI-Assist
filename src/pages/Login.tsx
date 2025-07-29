@@ -20,13 +20,15 @@ export default function Login() {
       .select('email')
       .eq('username', username)
       .single();
-    if (error || !data) {
+    // Type assertion to avoid linter error
+    const email = (data as { email?: string } | null)?.email;
+    if (error || !email) {
       setError("Invalid username or password, or account not confirmed.");
       return;
     }
     // 2. Sign in with email and password
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: data.email,
+      email,
       password,
     });
     if (signInError) {
