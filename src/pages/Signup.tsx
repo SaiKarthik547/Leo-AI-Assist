@@ -17,27 +17,19 @@ export default function Signup() {
     e.preventDefault();
     setError("");
     setInfo("");
-    // 1. Sign up with Supabase (store username in user_metadata)
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { username } }
     });
-    if (error) {
-      setError(error.message);
-      return;
-    }
+    if (error) { setError(error.message); return; }
     const userId = data.user?.id;
-    if (!userId) {
-      setError("Signup failed: No user id returned.");
-      return;
-    }
-    // 2. If confirmation required, show message and return
+    if (!userId) { setError("Signup failed: No user id returned."); return; }
     if (!data.session) {
       setInfo("Check your email to confirm your account before logging in.");
       return;
     }
-    // 3. Wait for session to be available
+    // Wait for session to be available
     let sessionUserId = null;
     for (let i = 0; i < 10; i++) {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -49,11 +41,15 @@ export default function Signup() {
       setError("Session not established after signup.");
       return;
     }
-    // 4. Insert into profiles table with user_id, username, email
-    const { error: profileError } = await supabase.from('profiles').insert({ user_id: userId, username, email });
-    if (profileError) {
-      setError(profileError.message);
-      return;
+    // Check if profile already exists
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('user_id', userId)
+      .single();
+    if (!existingProfile) {
+      const { error: profileError } = await supabase.from('profiles').insert({ user_id: userId, username, email });
+      if (profileError) { setError(profileError.message); return; }
     }
     navigate("/profile");
   };
