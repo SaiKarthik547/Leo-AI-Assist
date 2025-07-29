@@ -76,19 +76,8 @@ export const ChatInterface = () => {
           // Create a new chat session
           const sessionId = await ChatService.createSession(user.id);
           setCurrentSessionId(sessionId);
-          // Add welcome message
-          const welcomeMessage = {
-            id: "1",
-            content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
-            isUser: false,
-            timestamp: new Date(),
-            sessionId: sessionId
-          };
-          setMessages([welcomeMessage]);
-          // Save welcome message to database (don't await to avoid blocking UI)
-          ChatService.saveMessage(sessionId, user.id, welcomeMessage.content, false).catch(error => {
-            console.error("Error saving welcome message:", error);
-          });
+          // Add welcome message only if no messages exist yet
+          // (We'll load messages below)
         } else {
           setUser(null);
         }
@@ -102,6 +91,25 @@ export const ChatInterface = () => {
     };
     initializeChat();
   }, []);
+
+  // NEW: Load messages from Supabase when session/user changes
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (user && currentSessionId) {
+        const supaMessages = await ChatService.getMessages(currentSessionId);
+        setMessages(
+          supaMessages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            isUser: msg.is_user,
+            timestamp: new Date(msg.created_at),
+            sessionId: msg.session_id,
+          }))
+        );
+      }
+    };
+    loadMessages();
+  }, [user, currentSessionId]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !currentSessionId || isSending) {
