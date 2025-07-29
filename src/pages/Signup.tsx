@@ -67,12 +67,14 @@ export default function Signup() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               required
+              autoComplete="username"
             />
             <Input
               placeholder="Email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
+              autoComplete="email"
             />
             <Input
               type="password"
