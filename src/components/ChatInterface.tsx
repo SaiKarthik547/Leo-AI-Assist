@@ -69,16 +69,19 @@ export const ChatInterface = () => {
     // Get current user and initialize chat session
     const initializeChat = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-        
-        if (user) {
-          // Create a new chat session
-          const sessionId = await ChatService.createSession(user.id);
+        // Try to get user from localStorage (local login)
+        let localUser = null;
+        const localUserStr = localStorage.getItem("currentUser");
+        if (localUserStr) {
+          localUser = JSON.parse(localUserStr);
+        }
+        setUser(localUser);
+        if (localUser) {
+          // Create a new chat session for this user
+          const sessionId = await ChatService.createSession(localUser.username, "New Chat");
           setCurrentSessionId(sessionId);
-          
           // Add welcome message
-          const welcomeMessage: Message = {
+          const welcomeMessage = {
             id: "1",
             content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
             isUser: false,
@@ -86,17 +89,15 @@ export const ChatInterface = () => {
             sessionId: sessionId
           };
           setMessages([welcomeMessage]);
-          
           // Save welcome message to database (don't await to avoid blocking UI)
-          ChatService.saveMessage(sessionId, user.id, welcomeMessage.content, false).catch(error => {
+          ChatService.saveMessage(sessionId, localUser.username, welcomeMessage.content, false).catch(error => {
             console.error("Error saving welcome message:", error);
           });
         } else {
-          // If no user, still allow chat but with limited functionality
+          // If no user, show demo mode
           const demoSessionId = "demo-" + Date.now();
           setCurrentSessionId(demoSessionId);
-          
-          const welcomeMessage: Message = {
+          const welcomeMessage = {
             id: "1",
             content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
             isUser: false,
@@ -108,12 +109,10 @@ export const ChatInterface = () => {
       } catch (error) {
         console.error("Error initializing chat:", error);
         toast.error("Failed to initialize chat session");
-        
         // Fallback to demo mode
         const demoSessionId = "demo-" + Date.now();
         setCurrentSessionId(demoSessionId);
-        
-        const welcomeMessage: Message = {
+        const welcomeMessage = {
           id: "1",
           content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
           isUser: false,
@@ -134,7 +133,7 @@ export const ChatInterface = () => {
     }
 
     setIsSending(true);
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
       content: inputValue,
       isUser: true,
@@ -147,9 +146,9 @@ export const ChatInterface = () => {
     setInputValue("");
 
     try {
-      // Save user message to database (non-blocking) - only if user is authenticated
+      // Save user message to database for local login user
       if (user) {
-        ChatService.saveMessage(currentSessionId, user.id, currentInput, true).catch(error => {
+        ChatService.saveMessage(currentSessionId, user.username, currentInput, true).catch(error => {
           console.error("Error saving user message:", error);
         });
       }
@@ -158,7 +157,7 @@ export const ChatInterface = () => {
         body: { message: currentInput }
       });
       if (error) throw error;
-      const aiResponse: Message = {
+      const aiResponse = {
         id: (Date.now() + 1).toString(),
         content: data.response,
         isUser: false,
@@ -166,9 +165,9 @@ export const ChatInterface = () => {
         sessionId: currentSessionId
       };
       setMessages(prev => [...prev, aiResponse]);
-      // Save AI response to database (non-blocking) - only if user is authenticated
+      // Save AI response to database for local login user
       if (user) {
-        ChatService.saveMessage(currentSessionId, user.id, data.response, false).catch(error => {
+        ChatService.saveMessage(currentSessionId, user.username, data.response, false).catch(error => {
           console.error("Error saving AI response:", error);
         });
       }
@@ -189,7 +188,7 @@ export const ChatInterface = () => {
       }
     } catch (error) {
       console.error('Error getting AI response:', error);
-      const errorResponse: Message = {
+      const errorResponse = {
         id: (Date.now() + 1).toString(),
         content: "I'm sorry, I'm having trouble connecting right now. Please try again.",
         isUser: false,
