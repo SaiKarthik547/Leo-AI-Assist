@@ -3,22 +3,73 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AuthPage() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const user = users.find((u: any) => u.username === username && u.password === password);
-    if (user) {
-      localStorage.setItem("currentUser", JSON.stringify(user));
-      navigate("/profile");
-    } else {
-      setError("Invalid username or password");
+    setIsLoading(true);
+    setError("");
+
+    // Basic validation
+    if (!email || !password) {
+      setError("Email and password are required");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!email.includes('@')) {
+      setError("Please enter a valid email address");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('Login error:', error);
+        setError(error.message);
+        return;
+      }
+
+      if (data.user) {
+        // Get user profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (profile) {
+          localStorage.setItem("currentUser", JSON.stringify({
+            id: data.user.id,
+            email: data.user.email,
+            username: profile.full_name
+          }));
+        } else {
+          localStorage.setItem("currentUser", JSON.stringify({
+            id: data.user.id,
+            email: data.user.email
+          }));
+        }
+        
+        navigate("/");
+      }
+    } catch (error) {
+      console.error('AuthPage login catch error:', error);
+      setError("An error occurred during sign in");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -31,9 +82,10 @@ export default function AuthPage() {
         <CardContent>
           <form className="space-y-4" onSubmit={handleLogin}>
             <Input
-              placeholder="Username"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               required
             />
             <Input
@@ -44,7 +96,9 @@ export default function AuthPage() {
               required
             />
             {error && <div className="text-red-500 text-sm text-center">{error}</div>}
-            <Button type="submit" className="w-full bg-gradient-primary">Sign In</Button>
+            <Button type="submit" className="w-full bg-gradient-primary" disabled={isLoading}>
+              {isLoading ? "Signing In..." : "Sign In"}
+            </Button>
           </form>
           <div className="mt-4 text-center text-sm">
             Don't have an account?{' '}

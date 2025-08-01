@@ -2,54 +2,44 @@
 // Node.js Express backend for system commands and info
 const express = require('express');
 const cors = require('cors');
-const os = require('os');
-const { exec } = require('child_process');
+const path = require('path');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'dist')));
 
-// System Info Endpoint
-app.get('/api/system-info', (req, res) => {
-  const info = {
-    cpuUsage: os.loadavg()[0],
-    totalMem: os.totalmem(),
-    freeMem: os.freemem(),
-    platform: os.platform(),
-    arch: os.arch(),
-    uptime: os.uptime(),
-    hostname: os.hostname(),
-    userInfo: os.userInfo(),
-  };
-  res.json(info);
-});
-
-// System Command Endpoint
-app.post('/api/command', (req, res) => {
-  const { command } = req.body;
-  let cmd;
-  switch (command) {
-    case 'shutdown':
-      cmd = 'shutdown /s /t 0';
-      break;
-    case 'restart':
-      cmd = 'shutdown /r /t 0';
-      break;
-    case 'lock':
-      cmd = 'rundll32.exe user32.dll,LockWorkStation';
-      break;
-    default:
-      return res.status(400).json({ error: 'Unknown command' });
-  }
-  exec(cmd, (error) => {
-    if (error) {
-      return res.status(500).json({ error: error.message });
+// Simple chat API endpoint
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
     }
-    res.json({ success: true });
-  });
+
+    // For now, return a simple response
+    // In a real implementation, you would call your AI service here
+    const response = {
+      response: `I received your message: "${message}". This is a simple response while we set up the AI integration.`
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error in chat API:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-const PORT = 5000;
+// Serve the React app for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 app.listen(PORT, () => {
-  console.log(`System backend running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Open http://localhost:${PORT} to view the app`);
 });

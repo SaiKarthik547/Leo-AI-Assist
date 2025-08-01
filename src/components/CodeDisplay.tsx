@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Code } from "lucide-react";
 import { toast } from "sonner";
@@ -69,25 +67,14 @@ export const CodeDisplay = ({ code, language = "javascript", fileName }: CodeDis
 
       {/* Code Content */}
       <div className="relative">
-        <SyntaxHighlighter
-          language={detectedLanguage}
-          style={oneDark}
-          customStyle={{
-            margin: 0,
-            padding: '1rem',
-            background: 'hsl(var(--card))',
-            fontSize: '0.875rem',
-            lineHeight: '1.5',
-          }}
-          showLineNumbers={true}
-          lineNumberStyle={{
-            color: 'hsl(var(--muted-foreground))',
-            paddingRight: '1rem',
-            minWidth: '2rem',
+        <pre
+          className="m-0 p-4 bg-card text-foreground text-sm leading-relaxed overflow-x-auto"
+          style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
           }}
         >
-          {code}
-        </SyntaxHighlighter>
+          <code>{code}</code>
+        </pre>
       </div>
     </div>
   );

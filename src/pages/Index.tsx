@@ -1,5 +1,5 @@
 import { ChatInterface } from "@/components/ChatInterface";
-
+import { SupabaseTest } from "@/components/SupabaseTest";
 import { useState } from "react";
 
 const navItems = [
@@ -38,6 +38,9 @@ const Index = () => {
         )}
       </div>
       <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center">
+        <div className="mb-4">
+          <SupabaseTest />
+        </div>
         <ChatInterface />
       </main>
     </div>

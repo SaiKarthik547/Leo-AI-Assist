@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageContent } from "@/components/MessageContent";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatService, ChatSession } from "@/services/chatService";
+import AuthPage from "./AuthPage";
 
 interface Message {
   id: string;
@@ -34,22 +35,29 @@ function groupMessagesByDay(messages: Message[]): DailyHistory[] {
 }
 
 export default function ChatHistory() {
-  const [sessions, setSessions] = useState<SessionHistory[]>([]);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [sessions, setSessions] = useState<SessionHistory[]>([]);
 
+  // Always get user from Supabase Auth
   useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    };
+    checkUser();
+  }, []);
+
+  // Only load history if user and user.id are defined
+  useEffect(() => {
+    if (!user || !user.id) return;
     const loadChatHistory = async () => {
+      setLoading(true);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          navigate("/login");
-          return;
-        }
-
         const chatSessions = await ChatService.getSessions(user.id);
+        console.log('Loaded sessions:', chatSessions); // DEBUG LOG
         const sessionsWithMessages: SessionHistory[] = [];
-
         for (const session of chatSessions) {
           const messages = await ChatService.getMessages(session.id);
           sessionsWithMessages.push({
@@ -62,18 +70,22 @@ export default function ChatHistory() {
             }))
           });
         }
-
         setSessions(sessionsWithMessages);
       } catch (error) {
-        console.error("Error loading chat history:", error);
         setSessions([]);
       } finally {
         setLoading(false);
       }
     };
-
     loadChatHistory();
-  }, [navigate]);
+  }, [user]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+  if (!user) {
+    return <AuthPage />;
+  }
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-gradient-hero px-4 py-8 overflow-y-auto h-screen relative">

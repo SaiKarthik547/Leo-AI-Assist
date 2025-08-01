@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { LeoAvatar } from "@/components/LeoAvatar";
+import { supabase } from "@/integrations/supabase/client";
 import AuthPage from "./AuthPage";
 import { Button } from "@/components/ui/button";
 
@@ -19,20 +20,16 @@ export default function Profile() {
   ];
 
   useEffect(() => {
-    // Try to load user from localStorage (username/password auth)
-    const localUser = localStorage.getItem("currentUser");
-    if (localUser) {
-      setUser(JSON.parse(localUser));
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
       setLoading(false);
-      return;
-    }
-    // If not found, show auth page
-    setUser(null);
-    setLoading(false);
+    };
+    checkUser();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("currentUser");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     window.location.reload();
   };
 
@@ -88,7 +85,7 @@ export default function Profile() {
             User Profile
           </h1>
           <p className="text-lg text-muted-foreground">
-            Welcome, {user.username}!
+            Welcome, {user.email}!
           </p>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 items-start">
@@ -98,12 +95,12 @@ export default function Profile() {
                 <div className="flex justify-center mb-6">
                   <Avatar className="w-28 h-28">
                     <AvatarFallback className="text-2xl font-bold bg-gradient-primary text-primary-foreground">
-                      {user.username?.[0]?.toUpperCase() || "U"}
+                      {user.email?.[0]?.toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                 </div>
-                <CardTitle className="text-2xl font-bold">{user.username}</CardTitle>
-                <CardDescription className="mt-2 text-base">Local Account</CardDescription>
+                <CardTitle className="text-2xl font-bold">{user.email}</CardTitle>
+                <CardDescription className="mt-2 text-base">Supabase Account</CardDescription>
                 <Badge className="mx-auto mt-4 bg-secondary text-secondary-foreground text-base px-4 py-2">
                   Connected
                 </Badge>
@@ -112,13 +109,13 @@ export default function Profile() {
                 <div className="space-y-6">
                   <div className="flex items-center space-x-3 text-lg justify-center">
                     <span className="w-5 h-5 text-muted-foreground">👤</span>
-                    <span>Signed in locally</span>
+                    <span>Signed in with Supabase</span>
                   </div>
                   <Separator />
                   <div className="text-left">
-                    <span className="text-base font-semibold">Username</span>
+                    <span className="text-base font-semibold">Email</span>
                     <p className="text-base text-muted-foreground mt-2">
-                      {user.username}
+                      {user.email}
                     </p>
                   </div>
                 </div>

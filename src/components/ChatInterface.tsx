@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatService } from "@/services/chatService";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+import AuthPage from "@/pages/AuthPage";
 
 interface Message {
   id: string;
@@ -65,62 +66,66 @@ export const ChatInterface = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Cleanup effect to stop speech when component unmounts
   useEffect(() => {
-    // Get current user and initialize chat session
+    return () => {
+      if ('speechSynthesis' in window) {
+        (window as any).speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Helper to get or create a session for the user
+  const getOrCreateSession = async (userId) => {
+    try {
+      const sessions = await ChatService.getSessions(userId);
+      if (sessions && sessions.length > 0) {
+        return sessions[0].id; // Use the latest session
+      }
+      // Otherwise, create a new session
+      return await ChatService.createSession(userId);
+    } catch (error) {
+      console.error("Error getting/creating session:", error);
+      // Return temporary session for anonymous users
+      return `temp_${Date.now()}`;
+    }
+  };
+
+  useEffect(() => {
+    // Supabase authentication check - allow anonymous users
     const initializeChat = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-        
         if (user) {
-          // Create a new chat session
-          const sessionId = await ChatService.createSession(user.id);
+          // Get user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+
+          const userData = {
+            id: user.id,
+            email: user.email,
+            username: profile?.full_name || user.email?.split('@')[0]
+          };
+          
+          setUser(userData);
+          const sessionId = await getOrCreateSession(user.id);
           setCurrentSessionId(sessionId);
-          
-          // Add welcome message
-          const welcomeMessage: Message = {
-            id: "1",
-            content: "Hello! I'm your assistant. I'm here to help you with anything you need. How can I assist you today?",
-            isUser: false,
-            timestamp: new Date(),
-            sessionId: sessionId
-          };
-          setMessages([welcomeMessage]);
-          
-          // Save welcome message to database (don't await to avoid blocking UI)
-          ChatService.saveMessage(sessionId, user.id, welcomeMessage.content, false).catch(error => {
-            console.error("Error saving welcome message:", error);
-          });
         } else {
-          // If no user, still allow chat but with limited functionality
-          const demoSessionId = "demo-" + Date.now();
-          setCurrentSessionId(demoSessionId);
-          
-          const welcomeMessage: Message = {
-            id: "1",
-            content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
-            isUser: false,
-            timestamp: new Date(),
-            sessionId: demoSessionId
-          };
-          setMessages([welcomeMessage]);
+          // Anonymous user - create temporary session
+          setUser(null);
+          const tempSessionId = `temp_${Date.now()}`;
+          setCurrentSessionId(tempSessionId);
         }
       } catch (error) {
         console.error("Error initializing chat:", error);
         toast.error("Failed to initialize chat session");
-        
-        // Fallback to demo mode
-        const demoSessionId = "demo-" + Date.now();
-        setCurrentSessionId(demoSessionId);
-        
-        const welcomeMessage: Message = {
-          id: "1",
-          content: "Hello! I'm your assistant. Please log in for full functionality. How can I assist you today?",
-          isUser: false,
-          timestamp: new Date(),
-          sessionId: demoSessionId
-        };
-        setMessages([welcomeMessage]);
+        setUser(null);
+        // Still allow anonymous usage
+        const tempSessionId = `temp_${Date.now()}`;
+        setCurrentSessionId(tempSessionId);
       } finally {
         setIsLoading(false);
       }
@@ -128,39 +133,66 @@ export const ChatInterface = () => {
     initializeChat();
   }, []);
 
+  // Load messages from Supabase when session/user changes (only for authenticated users)
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (user && currentSessionId && !currentSessionId.startsWith('temp_')) {
+        const supaMessages = await ChatService.getMessages(currentSessionId);
+        setMessages(
+          supaMessages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            isUser: msg.is_user,
+            timestamp: new Date(msg.created_at),
+            sessionId: msg.session_id,
+          }))
+        );
+      }
+    };
+    loadMessages();
+  }, [user, currentSessionId]);
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !currentSessionId || isSending) {
       return;
     }
-
+    
+    // Stop any ongoing speech when a new message is sent
+    if (voiceEnabled && 'speechSynthesis' in window) {
+      if (isSpeaking) {
+        (window as any).speechSynthesis.cancel();
+        setIsSpeaking(false);
+        toast.info('Voice interrupted for new message');
+      }
+    }
+    
     setIsSending(true);
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
       content: inputValue,
       isUser: true,
       timestamp: new Date(),
       sessionId: currentSessionId
     };
-
     setMessages(prev => [...prev, userMessage]);
     const currentInput = inputValue;
     setInputValue("");
-
     try {
-      // Save user message to database (non-blocking) - only if user is authenticated
-      if (user) {
+      // Save user message to Supabase (only for authenticated users)
+      if (user && !currentSessionId.startsWith('temp_')) {
         ChatService.saveMessage(currentSessionId, user.id, currentInput, true).catch(error => {
           console.error("Error saving user message:", error);
         });
       }
-
+      
+      // Call Supabase function for AI response
       const { data, error } = await supabase.functions.invoke('chat-with-ai', {
         body: { message: currentInput }
       });
-
+      
       if (error) throw error;
-
-      const aiResponse: Message = {
+      
+      const aiResponse = {
         id: (Date.now() + 1).toString(),
         content: data.response,
         isUser: false,
@@ -168,28 +200,45 @@ export const ChatInterface = () => {
         sessionId: currentSessionId
       };
       setMessages(prev => [...prev, aiResponse]);
-
-      // Save AI response to database (non-blocking) - only if user is authenticated
-      if (user) {
+      
+      // Save AI response to Supabase (only for authenticated users)
+      if (user && !currentSessionId.startsWith('temp_')) {
         ChatService.saveMessage(currentSessionId, user.id, data.response, false).catch(error => {
           console.error("Error saving AI response:", error);
         });
       }
-
-      // Robot voice output
+      
+      // Robot voice output (only for non-code answers)
       if (voiceEnabled && 'speechSynthesis' in window) {
-        setIsSpeaking(true);
-        const utter = new (window as any).SpeechSynthesisUtterance(aiResponse.content);
-        utter.lang = 'en-US';
-        utter.volume = 1;
-        utter.rate = 1;
-        utter.pitch = 1;
-        utter.onend = () => setIsSpeaking(false);
-        (window as any).speechSynthesis.speak(utter);
+        const isCode = /```|\b(function|const|let|var|class|def|#include|import|public |private |protected |<\/?[a-z][^>]*>)/i.test(aiResponse.content);
+        if (!isCode) {
+          // Small delay to ensure previous speech is properly cancelled
+          setTimeout(() => {
+            setIsSpeaking(true);
+            const utter = new (window as any).SpeechSynthesisUtterance(aiResponse.content);
+            utter.lang = 'en-US';
+            utter.volume = 1;
+            utter.rate = 1;
+            utter.pitch = 1;
+            utter.onend = () => setIsSpeaking(false);
+            utter.onerror = (event) => {
+              // Only show error if it's not an interruption (which is expected behavior)
+              if (event.error !== 'interrupted') {
+                console.error('Speech synthesis error:', event);
+                setIsSpeaking(false);
+                toast.error('Voice output error');
+              } else {
+                // Interruption is expected when new message is sent
+                setIsSpeaking(false);
+              }
+            };
+            (window as any).speechSynthesis.speak(utter);
+          }, 100);
+        }
       }
     } catch (error) {
       console.error('Error getting AI response:', error);
-      const errorResponse: Message = {
+      const errorResponse = {
         id: (Date.now() + 1).toString(),
         content: "I'm sorry, I'm having trouble connecting right now. Please try again.",
         isUser: false,
@@ -230,6 +279,28 @@ export const ChatInterface = () => {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      // Stop any ongoing speech when logging out
+      if ('speechSynthesis' in window) {
+        (window as any).speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+      
+      await supabase.auth.signOut();
+      localStorage.removeItem("currentUser");
+      setUser(null);
+      setMessages([]);
+      // Create new temporary session for anonymous user
+      const tempSessionId = `temp_${Date.now()}`;
+      setCurrentSessionId(tempSessionId);
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      toast.error("Failed to log out");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col h-full w-full bg-gradient-hero items-center justify-center">
@@ -245,20 +316,56 @@ export const ChatInterface = () => {
     <div className="flex flex-col h-full w-full bg-gradient-hero items-center justify-center relative">
       {/* 3D background shape */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[32rem] h-[32rem] bg-gradient-to-br from-primary/20 to-secondary/10 rounded-full blur-3xl opacity-40 animate-float pointer-events-none z-0" />
-      {/* Leo Avatar Header */}
-      <div className="flex flex-col items-center justify-center pt-10 pb-4 z-10">
-        <LeoAvatar 
-          isListening={isListening} 
-          isSpeaking={isSpeaking} 
-          size="md" 
-        />
-        <h2 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent mt-4">
-          Assistant
-        </h2>
-        <p className="text-base text-muted-foreground mt-1">
-          Your intelligent companion
-        </p>
-      </div>
+             {/* Leo Avatar Header */}
+       <div className="flex flex-col items-center justify-center pt-10 pb-4 z-10">
+         <div className="flex items-center gap-4 mb-4">
+           {user ? (
+             <>
+               <span className="text-sm text-muted-foreground">
+                 Welcome, {user?.username || user?.email}
+               </span>
+               <Button
+                 variant="outline"
+                 size="sm"
+                 onClick={handleLogout}
+                 className="text-xs"
+               >
+                 Logout
+               </Button>
+             </>
+           ) : (
+             <>
+               <span className="text-sm text-muted-foreground">
+                 Guest Mode - Chat history not saved
+               </span>
+               <Button
+                 variant="outline"
+                 size="sm"
+                 onClick={() => window.location.href = '/login'}
+                 className="text-xs"
+               >
+                 Sign In
+               </Button>
+             </>
+           )}
+         </div>
+         <LeoAvatar 
+           isListening={isListening} 
+           isSpeaking={isSpeaking} 
+           size="md" 
+         />
+         <h2 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent mt-4">
+           Assistant
+         </h2>
+         <p className="text-base text-muted-foreground mt-1">
+           Your intelligent companion
+         </p>
+         {!user && (
+           <p className="text-xs text-muted-foreground mt-2 text-center">
+             💡 Sign in to save your chat history
+           </p>
+         )}
+       </div>
       {/* Chat Messages */}
       <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col z-10">
         <ScrollArea className="flex-1 h-[60vh] md:h-[70vh] p-4" ref={scrollAreaRef}>
@@ -308,7 +415,14 @@ export const ChatInterface = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
+            onClick={() => {
+              if (voiceEnabled && 'speechSynthesis' in window) {
+                // Stop any ongoing speech when turning off voice
+                (window as any).speechSynthesis.cancel();
+                setIsSpeaking(false);
+              }
+              setVoiceEnabled(!voiceEnabled);
+            }}
             className={`
               ${voiceEnabled ? "bg-secondary text-secondary-foreground" : ""}
               transition-all duration-300"
